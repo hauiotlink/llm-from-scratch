@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Model Checkpoints & Large Weights
+checkpoints/
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+
+# Jupyter Notebook Checkpoints & OS files
+.ipynb_checkpoints
+.DS_Store
+*.log
+
+# Secrets & Environment variables
+.env
+.env.*
+*.pem
+*.key
