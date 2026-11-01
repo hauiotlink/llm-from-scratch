@@ -54,24 +54,26 @@
 
 ---
 
-## 🚀 Hướng Dẫn Chạy Nhanh (Quick Start)
+## 🚀 Hướng Dẫn Chạy Nhanh Với UV (Quick Start with uv)
 
-### 1. Cài đặt môi trường
+Dự án sử dụng **`uv`** làm trình quản lý môi trường và gói tiêu chuẩn (nhanh gấp 10-100x so với pip).
+
+### 1. Đồng bộ môi trường bằng uv
 ```bash
-pip install -r requirements.txt
-# hoặc dùng uv
-uv pip install torch datasets regex matplotlib
+# Cài đặt uv nếu chưa có: curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync
 ```
 
 ### 2. Chạy thử nghiệm Core Foundation & Profiling (Local)
 ```bash
-PYTHONPATH=. python llm_base.py
+uv run python llm_base.py
 ```
 
 ### 3. Chạy Pre-training (Local Smoke Test)
 ```bash
-PYTHONPATH=. python train.py
+uv run python train.py
 ```
 
 ### 4. Huấn luyện quy mô lớn trên Colab Pro (A100 / L4)
-Mở [train_colab.ipynb](train_colab.ipynb) trên Google Colab, mount Google Drive và chạy huấn luyện trên tập dữ liệu `FineWeb-Edu` hoặc `SmolLM-Corpus`.
+Mở [train_colab.ipynb](train_colab.ipynb) trên Google Colab, notebook đã tích hợp sẵn lệnh cài `uv` và `uv pip install --system -e .` để chạy siêu tốc.
+
