@@ -85,6 +85,27 @@ def save_checkpoint(
     return checkpoint_path
 
 
+def find_latest_checkpoint(checkpoint_dir: str) -> Optional[str]:
+    """Finds the most recent checkpoint file based on step index.
+
+    Args:
+        checkpoint_dir: Directory containing saved .pt checkpoints.
+
+    Returns:
+        Optional[str]: Path to the latest checkpoint file, or None if empty.
+    """
+    if not os.path.exists(checkpoint_dir):
+        return None
+    ckpts = [
+        os.path.join(checkpoint_dir, f)
+        for f in os.listdir(checkpoint_dir)
+        if f.startswith("llm_step_") and f.endswith(".pt")
+    ]
+    if not ckpts:
+        return None
+    return max(ckpts)
+
+
 def load_checkpoint(
     checkpoint_path: str,
     model: nn.Module,
@@ -102,12 +123,14 @@ def load_checkpoint(
     Returns:
         int: The step index where checkpoint was saved.
     """
-    print(f"Loading checkpoint from: {checkpoint_path}")
+    print(f" Resuming training from checkpoint: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     if optimizer is not None and "optimizer_state_dict" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    return checkpoint.get("step", 0)
+    resumed_step = checkpoint.get("step", 0)
+    print(f" Successfully restored model & optimizer states at Step {resumed_step}")
+    return resumed_step
 
 
 def train_llm(
@@ -124,6 +147,7 @@ def train_llm(
     save_interval: int = 100,
     eval_interval: int = 50,
     checkpoint_dir: str = "checkpoints",
+    resume: bool = True,
     device: Optional[torch.device | str] = None,
 ) -> List[float]:
     """Runs LLM pre-training loop with mixed precision and gradient accumulation.
@@ -142,6 +166,7 @@ def train_llm(
         save_interval: Frequency of saving checkpoints.
         eval_interval: Frequency of running qualitative text generation.
         checkpoint_dir: Directory for storing model checkpoints.
+        resume: Whether to automatically resume from latest saved checkpoint.
         device: Target execution device.
 
     Returns:
@@ -164,6 +189,15 @@ def train_llm(
         fused=use_fused,
     )
 
+    # Auto-resume from latest checkpoint if available
+    start_step = 0
+    if resume:
+        latest_ckpt = find_latest_checkpoint(checkpoint_dir)
+        if latest_ckpt is not None:
+            start_step = load_checkpoint(
+                latest_ckpt, model=model, optimizer=optimizer, device=device
+            )
+
     data_iter = iter(dataloader)
     loss_history: List[float] = []
     accum_loss = 0.0
@@ -171,11 +205,12 @@ def train_llm(
     tokens_processed = 0
 
     print("\n" + "=" * 65)
-    print(f"STARTING LLM PRE-TRAINING ({max_steps} STEPS ON {device})")
+    print(f"STARTING LLM PRE-TRAINING (STEPS {start_step + 1} -> {max_steps} ON {device})")
     print(f"Effective Batch Size: {dataloader.batch_size * grad_accum_steps}")
+    print(f"Checkpoints saved to: {checkpoint_dir} every {save_interval} steps")
     print("=" * 65)
 
-    for step in range(1, max_steps + 1):
+    for step in range(start_step + 1, max_steps + 1):
         # Update scheduled learning rate
         current_lr = get_cosine_schedule_with_warmup_lr(
             step=step,
