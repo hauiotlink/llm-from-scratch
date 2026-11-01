@@ -148,6 +148,7 @@ def train_llm(
     eval_interval: int = 50,
     checkpoint_dir: str = "checkpoints",
     resume: bool = True,
+    use_gradient_checkpointing: bool = True,
     device: Optional[torch.device | str] = None,
 ) -> List[float]:
     """Runs LLM pre-training loop with mixed precision and gradient accumulation.
@@ -174,6 +175,13 @@ def train_llm(
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
+    if use_gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
+        model.gradient_checkpointing_enable()
+        print("⚡ Gradient Checkpointing enabled: Saving up to 75% activation VRAM!")
 
     model.to(device)
     model.train()

@@ -149,6 +149,16 @@ class ModernDecoderOnlyLLM(nn.Module):
         if config.tie_word_embeddings:
             self.lm_head.weight = self.embed_tokens.weight
 
+        self.gradient_checkpointing = False
+
+    def gradient_checkpointing_enable(self) -> None:
+        """Enables activation gradient checkpointing to save VRAM."""
+        self.gradient_checkpointing = True
+
+    def gradient_checkpointing_disable(self) -> None:
+        """Disables activation gradient checkpointing."""
+        self.gradient_checkpointing = False
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -183,9 +193,18 @@ class ModernDecoderOnlyLLM(nn.Module):
 
         # 2. Iterate through all decoder blocks
         for layer in self.layers:
-            hidden_states = layer(
-                hidden_states, position_ids=position_ids, cache=cache
-            )
+            if self.training and self.gradient_checkpointing and cache is None:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    layer,
+                    hidden_states,
+                    position_ids,
+                    None,
+                    use_reentrant=False,
+                )
+            else:
+                hidden_states = layer(
+                    hidden_states, position_ids=position_ids, cache=cache
+                )
 
         # 3. Final RMSNorm
         hidden_states = self.norm(hidden_states)
