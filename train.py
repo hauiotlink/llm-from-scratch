@@ -55,6 +55,7 @@ def save_checkpoint(
     loss: float,
     config: LLMConfig,
     checkpoint_dir: str,
+    filename: str = "last.pt",
 ) -> str:
     """Saves model weights, optimizer state, and training metadata.
 
@@ -65,14 +66,13 @@ def save_checkpoint(
         loss: Most recent training loss value.
         config: Model configuration dataclass.
         checkpoint_dir: Target directory path for checkpoints.
+        filename: Checkpoint filename (e.g. 'last.pt' or 'best.pt').
 
     Returns:
         str: Absolute file path of the saved checkpoint.
     """
     os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_path = os.path.join(
-        checkpoint_dir, f"llm_step_{step:06d}.pt"
-    )
+    checkpoint_path = os.path.join(checkpoint_dir, filename)
     checkpoint = {
         "step": step,
         "loss": loss,
@@ -81,12 +81,14 @@ def save_checkpoint(
         "config": config,
     }
     torch.save(checkpoint, checkpoint_path)
-    print(f" Saved checkpoint: {checkpoint_path} (Loss: {loss:.4f})")
+    print(f" Saved checkpoint [{filename}]: {checkpoint_path} (Step {step}, Loss: {loss:.4f})")
     return checkpoint_path
 
 
 def find_latest_checkpoint(checkpoint_dir: str) -> Optional[str]:
-    """Finds the most recent checkpoint file based on step index.
+    """Finds the most recent checkpoint file to resume training.
+
+    Prioritizes 'last.pt', with fallback to legacy step-named checkpoints.
 
     Args:
         checkpoint_dir: Directory containing saved .pt checkpoints.
@@ -96,6 +98,11 @@ def find_latest_checkpoint(checkpoint_dir: str) -> Optional[str]:
     """
     if not os.path.exists(checkpoint_dir):
         return None
+
+    last_pt = os.path.join(checkpoint_dir, "last.pt")
+    if os.path.exists(last_pt):
+        return last_pt
+
     ckpts = [
         os.path.join(checkpoint_dir, f)
         for f in os.listdir(checkpoint_dir)
@@ -199,12 +206,22 @@ def train_llm(
 
     # Auto-resume from latest checkpoint if available
     start_step = 0
+    best_loss = float("inf")
     if resume:
         latest_ckpt = find_latest_checkpoint(checkpoint_dir)
         if latest_ckpt is not None:
             start_step = load_checkpoint(
                 latest_ckpt, model=model, optimizer=optimizer, device=device
             )
+        best_ckpt_path = os.path.join(checkpoint_dir, "best.pt")
+        if os.path.exists(best_ckpt_path):
+            try:
+                ckpt_meta = torch.load(
+                    best_ckpt_path, map_location="cpu", weights_only=False
+                )
+                best_loss = ckpt_meta.get("loss", float("inf"))
+            except Exception:
+                pass
 
     data_iter = iter(dataloader)
     loss_history: List[float] = []
@@ -293,7 +310,7 @@ def train_llm(
             print(f"'{generated_str}'\n" + "-" * 40)
             model.train()
 
-        # Save checkpoint
+        # Save checkpoints (last.pt and best.pt only)
         if step % save_interval == 0 or step == max_steps:
             save_checkpoint(
                 model=model,
@@ -302,7 +319,19 @@ def train_llm(
                 loss=step_loss,
                 config=model.config,
                 checkpoint_dir=checkpoint_dir,
+                filename="last.pt",
             )
+            if step_loss < best_loss:
+                best_loss = step_loss
+                save_checkpoint(
+                    model=model,
+                    optimizer=optimizer,
+                    step=step,
+                    loss=step_loss,
+                    config=model.config,
+                    checkpoint_dir=checkpoint_dir,
+                    filename="best.pt",
+                )
 
     total_time = time.perf_counter() - start_time
     print("\n" + "=" * 65)
